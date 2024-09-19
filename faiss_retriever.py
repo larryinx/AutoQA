@@ -4,9 +4,10 @@
 
 from langchain.schema import Document
 from langchain.vectorstores import Chroma,FAISS
-from langchain.embeddings.huggingface import HuggingFaceEmbeddings
+from langchain_huggingface import HuggingFaceEmbeddings
 from pdf_parse import DataProcess
 import torch
+import os
 # from bm25_retriever import BM25
 
 class FaissRetriever(object):
@@ -15,14 +16,20 @@ class FaissRetriever(object):
                                model_name = model_path,
                                model_kwargs = {"device":"cuda"}
                            )
-        docs = []
-        for idx, line in enumerate(data):
-            line = line.strip("\n").strip()
-            words = line.split("\t")
-            docs.append(Document(page_content=words[0], metadata={"id": idx}))
-        self.vector_store = FAISS.from_documents(docs, self.embeddings)
+        # Check if there is database folder
+        if not os.path.exists("./database"):
+            docs = []
+            for idx, line in enumerate(data):
+                line = line.strip("\n").strip()
+                words = line.split("\t")
+                docs.append(Document(page_content=words[0], metadata={"id": idx}))
+            self.vector_store = FAISS.from_documents(docs, self.embeddings)
+            self.vector_store.save_local("./database")
+        else:
+            self.vector_store = FAISS.load_local(folder_path="./database", embeddings=self.embeddings, allow_dangerous_deserialization=True)
         del self.embeddings
         torch.cuda.empty_cache()
+        
 
     def GetTopK(self, query, k):
        context = self.vector_store.similarity_search_with_score(query, k=k)
@@ -31,9 +38,8 @@ class FaissRetriever(object):
         return self.vector_store
 
 if __name__ == "__main__":
-    base = "/root/autodl-tmp/codes"
-    model_name=base + "/pre_train_model/m3e-large" #text2vec-large-chinese
-    dp =  DataProcess(pdf_path = base + "/data/train_a.pdf")
+    model_name= "./pre_train_model/m3e-large" #text2vec-large-chinese
+    dp =  DataProcess(pdf_path = "./data/train_a.pdf")
     dp.ParseBlock(max_seq = 1024)
     dp.ParseBlock(max_seq = 512)
     print(len(dp.data))
